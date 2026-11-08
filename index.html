@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>لوحة موزاية</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Reem+Kufi:wght@500;700&display=swap">
+<style>
+/* Layout: full-screen backdrop (background to be chosen later); one info card top-right, above where the app row sits. */
+:root{
+  --ground:#0b1f24;
+  --ground-2:#12353b;
+  --card:rgba(9,24,28,.72);
+  --line:rgba(214,196,150,.28);
+  --text:#f1ece0;
+  --muted:#a9b9b6;
+  --gold:#e0bd6a;
+  --display:"Reem Kufi","Tajawal",sans-serif;
+  --body:"Tajawal",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:radial-gradient(120% 90% at 80% 0%,var(--ground-2),var(--ground) 60%);
+  color:var(--text);
+  font-family:var(--body);
+  overflow:hidden;
+}
+.card{
+  position:fixed;
+  top:6vh;
+  right:3vw;
+  width:min(28vw,26rem);
+  min-width:19rem;
+  padding:1.4rem 1.5rem 1.2rem;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:1rem;
+  backdrop-filter:blur(8px);
+  display:grid;
+  gap:1rem;
+}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.place{font-family:var(--display);font-size:1.35rem;color:var(--gold);line-height:1.2}
+.place small{display:block;font-family:var(--body);font-size:.85rem;color:var(--muted);margin-top:.2rem}
+.temp{text-align:left;direction:ltr}
+.temp b{font-family:var(--display);font-size:2.8rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.temp span{display:block;font-size:.85rem;color:var(--muted);direction:rtl;text-align:left;margin-top:.2rem}
+.date{display:flex;justify-content:space-between;gap:1rem;font-size:1rem;border-block:1px solid var(--line);padding-block:.7rem}
+.date div:last-child{color:var(--muted)}
+.clock{font-variant-numeric:tabular-nums}
+.times{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;text-align:center}
+.t{padding:.5rem .1rem;border-radius:.6rem;border:1px solid transparent}
+.t span{display:block;font-size:.8rem;color:var(--muted)}
+.t b{display:block;font-size:1.05rem;font-weight:500;font-variant-numeric:tabular-nums;direction:ltr;margin-top:.15rem}
+.t.next{border-color:var(--gold);background:rgba(224,189,106,.12)}
+.t.next span{color:var(--gold)}
+.next-line{font-size:.9rem;color:var(--muted);text-align:center}
+.next-line b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<section class="card" aria-label="معلومات اليوم">
+  <div class="top">
+    <div class="place">موزاية<small>البليدة، الجزائر</small></div>
+    <div class="temp"><b id="temp">--°</b><span id="cond">جارٍ التحميل</span></div>
+  </div>
+  <div class="date">
+    <div id="greg"></div>
+    <div id="hijri"></div>
+  </div>
+  <div class="date" style="border-top:0;padding-top:0;margin-top:-.3rem">
+    <div>الساعة</div><div class="clock" id="clock" style="color:var(--text)"></div>
+  </div>
+  <div class="times" id="times"></div>
+  <div class="next-line" id="nextline"></div>
+</section>
+
+<script>
+(function(){
+  var LAT=36.4667, LON=2.6833, TZ="Africa/Algiers";
+  var NAMES=[["fajr","الفجر"],["sunrise","الشروق"],["dhuhr","الظهر"],["asr","العصر"],["maghrib","المغرب"],["isha","العشاء"]];
+  var SHOWN=["fajr","dhuhr","asr","maghrib","isha"];
+  var rad=Math.PI/180, deg=180/Math.PI;
+  function sin(x){return Math.sin(x*rad)} function cos(x){return Math.cos(x*rad)}
+  function tan(x){return Math.tan(x*rad)}
+  function acos(x){return Math.acos(Math.max(-1,Math.min(1,x)))*deg}
+  function fix(x,a){x=x-a*Math.floor(x/a);return x}
+
+  function nowParts(){
+    var f=new Intl.DateTimeFormat("en-GB",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+    var o={};f.formatToParts(new Date()).forEach(function(p){o[p.type]=+p.value});
+    return o;
+  }
+  function sun(y,m,d){
+    var jd=Date.UTC(y,m-1,d,12)/86400000+2440587.5, D=jd-2451545.0;
+    var g=fix(357.529+0.98560028*D,360), q=fix(280.459+0.98564736*D,360);
+    var L=fix(q+1.915*sin(g)+0.020*sin(2*g),360);
+    var e=23.439-0.00000036*D;
+    var RA=Math.atan2(cos(e)*sin(L),cos(L))*deg/15; RA=fix(RA,24);
+    var eqt=q/15-RA; if(eqt>12)eqt-=24; if(eqt<-12)eqt+=24;
+    var decl=Math.asin(sin(e)*sin(L))*deg;
+    return {decl:decl,eqt:eqt};
+  }
+  // Algerian Ministry of Religious Affairs convention: Fajr 18 deg, Isha 17 deg, standard Asr.
+  function prayerTimes(y,m,d){
+    var s=sun(y,m,d), tz=1;
+    var noon=12+tz-LON/15-s.eqt;
+    function at(angle,ccw){
+      var h=acos((-sin(angle)-sin(s.decl)*sin(LAT))/(cos(s.decl)*cos(LAT)))/15;
+      return noon+(ccw?-h:h);
+    }
+    var asrAlt=Math.atan(1/(1+tan(Math.abs(LAT-s.decl))))*deg;
+    var asr=noon+acos((sin(asrAlt)-sin(s.decl)*sin(LAT))/(cos(s.decl)*cos(LAT)))/15;
+    return {
+      fajr:at(18,true), sunrise:at(0.833,true), dhuhr:noon+1/60,
+      asr:asr, maghrib:at(0.833,false)+1/60, isha:at(17,false)
+    };
+  }
+  function fmt(h){
+    h=fix(h,24); var mm=Math.round(h*60), H=Math.floor(mm/60)%24, M=mm%60;
+    return (H<10?"0":"")+H+":"+(M<10?"0":"")+M;
+  }
+  function mins(h){return Math.round(fix(h,24)*60)}
+
+  var timesEl=document.getElementById("times");
+  var built=false, builtDay="";
+  function render(){
+    var n=nowParts(), key=n.year+"-"+n.month+"-"+n.day;
+    var pt=prayerTimes(n.year,n.month,n.day);
+    var nowMin=n.hour*60+n.minute+n.second/60;
+
+    var order=SHOWN.map(function(k){return {k:k,t:mins(pt[k])}});
+    var nextIdx=-1;
+    for(var i=0;i<order.length;i++){ if(order[i].t>nowMin){nextIdx=i;break} }
+    var nextName, nextDiff;
+    if(nextIdx<0){ // after Isha: next Fajr tomorrow
+      var tm=new Date(Date.UTC(n.year,n.month-1,n.day+1));
+      var pt2=prayerTimes(tm.getUTCFullYear(),tm.getUTCMonth()+1,tm.getUTCDate());
+      nextName="fajr"; nextDiff=mins(pt2.fajr)+1440-nowMin;
+    } else { nextName=order[nextIdx].k; nextDiff=order[nextIdx].t-nowMin; }
+
+    if(!built||builtDay!==key){
+      timesEl.innerHTML="";
+      NAMES.forEach(function(p){
+        if(SHOWN.indexOf(p[0])<0)return;
+        var div=document.createElement("div");div.className="t";div.id="t-"+p[0];
+        div.innerHTML="<span>"+p[1]+"</span><b>"+fmt(pt[p[0]])+"</b>";
+        timesEl.appendChild(div);
+      });
+      built=true;builtDay=key;
+    }
+    SHOWN.forEach(function(k){document.getElementById("t-"+k).classList.toggle("next",k===nextName)});
+
+    var dm=Math.floor(nextDiff), hh=Math.floor(dm/60), mm=dm%60;
+    var label=NAMES.filter(function(p){return p[0]===nextName})[0][1];
+    document.getElementById("nextline").innerHTML="الصلاة القادمة: <b>"+label+"</b> بعد <b>"+(hh>0?hh+" س ":"")+mm+" د</b>";
+
+    var dt=new Date();
+    document.getElementById("clock").textContent=
+      (n.hour<10?"0":"")+n.hour+":"+(n.minute<10?"0":"")+n.minute;
+    document.getElementById("greg").textContent=new Intl.DateTimeFormat("ar-DZ-u-nu-latn",{timeZone:TZ,weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(dt);
+    var h="";
+    try{h=new Intl.DateTimeFormat("ar-u-ca-islamic-civil-nu-latn",{timeZone:TZ,day:"numeric",month:"long",year:"numeric"}).format(dt)}catch(e){}
+    document.getElementById("hijri").textContent=h;
+  }
+
+  var CODES=[[0,"صافٍ"],[2,"قليل الغيوم"],[3,"غائم"],[48,"ضباب"],[57,"رذاذ"],[67,"مطر"],[77,"ثلج"],[82,"زخات مطر"],[86,"زخات ثلج"],[99,"عاصفة رعدية"]];
+  function cond(c){for(var i=0;i<CODES.length;i++){if(c<=CODES[i][0])return CODES[i][1]}return ""}
+  function weather(){
+    var url="https://api.open-meteo.com/v1/forecast?latitude="+LAT+"&longitude="+LON+"&current=temperature_2m,weather_code&timezone=Africa%2FAlgiers";
+    fetch(url).then(function(r){return r.json()}).then(function(j){
+      document.getElementById("temp").textContent=Math.round(j.current.temperature_2m)+"°";
+      document.getElementById("cond").textContent=cond(j.current.weather_code);
+    }).catch(function(){
+      document.getElementById("cond").textContent="لا يوجد اتصال";
+    });
+  }
+  render(); setInterval(render,1000);
+  weather(); setInterval(weather,15*60*1000);
+})();
+</script>
+</body>
+</html>
